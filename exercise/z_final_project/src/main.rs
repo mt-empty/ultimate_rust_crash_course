@@ -25,145 +25,228 @@
 //
 //     let positive_number: u32 = some_string.parse().expect("Failed to parse a number");
 
+use clap::{ArgAction, Parser, Subcommand, ValueEnum};
+use image::DynamicImage;
+use std::path::PathBuf;
+
+const OPEN_FILE_ERR: &str = "Failed to open INFILE.";
+const WRITE_FILE_ERR: &str = "Failed to write to OUTFILE.";
+
+/// Simple program to greet a person
+
+#[derive(Parser, Debug, Clone, ValueEnum)]
+enum RotateOptions {
+    d90,
+    d180,
+    d270,
+}
+
+#[derive(Subcommand, Debug)]
+enum CropValues {
+    /// X coordinate, Y coordinate, Width, Height
+    Crop {
+        #[arg(long)]
+        x: u32,
+        #[arg(long)]
+        y: u32,
+        #[arg(long)]
+        width: u32,
+        #[arg(long)]
+        height: u32,
+    },
+}
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Cli {
+    /// Input image file
+    #[arg(short, long)]
+    infile: PathBuf,
+
+    /// Output image file
+    #[arg(short, long, value_name = "output.png")]
+    outfile: PathBuf,
+
+    /// blur an image
+    #[arg(long)]
+    blur: Option<f32>,
+
+    /// brighten an image
+    #[arg(long)]
+    brighten: Option<i32>,
+
+    /// crops an image x: u32, y: u32, width: u32, height: u32
+    #[command(subcommand)]
+    cropCommand: Option<CropValues>,
+
+    /// Rotate an image
+    #[arg(long)]
+    rotate: Option<RotateOptions>,
+
+    /// Invert an image
+    #[arg(long, action = ArgAction::SetTrue)]
+    invert: Option<bool>,
+
+    /// Grayscale an image
+    #[arg(long, action = ArgAction::SetTrue)]
+    grayscale: Option<bool>,
+
+    /// Fractal an image
+    #[arg(long, action = ArgAction::SetTrue)]
+    fractal: Option<bool>,
+
+    /// Generate an image
+    #[arg(long, action = ArgAction::SetTrue)]
+    generate: Option<bool>,
+
+    /// Turn debugging information on
+    #[arg(short, long, action = clap::ArgAction::Count)]
+    debug: u8,
+}
+
 fn main() {
-    // 1. First, you need to implement some basic command-line argument handling
-    // so you can make your program do different things.  Here's a little bit
-    // to get you started doing manual parsing.
-    //
-    // Challenge: If you're feeling really ambitious, you could delete this code
-    // and use the "clap" library instead: https://docs.rs/clap/2.32.0/clap/
-    let mut args: Vec<String> = std::env::args().skip(1).collect();
-    if args.is_empty() {
-        print_usage_and_exit();
+
+    let cli = Cli::parse();
+    println!("{:?}", cli);
+
+    match cli.debug {
+        0 => println!("Debug mode is off"),
+        1 => println!("Debug mode is kind of on"),
+        2 => println!("Debug mode is on"),
+        _ => println!("Don't be crazy"),
     }
-    let subcommand = args.remove(0);
-    match subcommand.as_str() {
-        // EXAMPLE FOR CONVERSION OPERATIONS
-        "blur" => {
-            if args.len() != 2 {
-                print_usage_and_exit();
+
+    let (infile, outfile) = (cli.infile, cli.outfile);
+
+    if let Some(value) = cli.blur {
+        blur(&infile, &outfile, value);
+    }
+
+    if let Some(value) = cli.brighten {
+        brighten(&infile, &outfile, value);
+    }
+
+    if let Some(value) = cli.cropCommand {
+        match value {
+            CropValues::Crop {
+                x,
+                y,
+                width,
+                height,
+            } => {
+                crop(&infile, &outfile, x, y, width, height);
             }
-            let infile = args.remove(0);
-            let outfile = args.remove(0);
-            // **OPTION**
-            // Improve the blur implementation -- see the blur() function below
-            blur(infile, outfile);
         }
+    }
 
-        // **OPTION**
-        // Brighten -- see the brighten() function below
+    if let Some(value) = cli.rotate {
+        rotate(&infile, &outfile, value);
+    }
 
-        // **OPTION**
-        // Crop -- see the crop() function below
+    if cli.invert.unwrap() {
+        invert(&infile, &outfile);
+    }
 
-        // **OPTION**
-        // Rotate -- see the rotate() function below
+    if cli.grayscale.unwrap() {
+        grayscale(&infile, &outfile);
+    }
 
-        // **OPTION**
-        // Invert -- see the invert() function below
+    if cli.fractal.unwrap() {
+        fractal(&outfile);
+    }
 
-        // **OPTION**
-        // Grayscale -- see the grayscale() function below
-
-        // A VERY DIFFERENT EXAMPLE...a really fun one. :-)
-        "fractal" => {
-            if args.len() != 1 {
-                print_usage_and_exit();
-            }
-            let outfile = args.remove(0);
-            fractal(outfile);
-        }
-
-        // **OPTION**
-        // Generate -- see the generate() function below -- this should be sort of like "fractal()"!
-
-        // For everything else...
-        _ => {
-            print_usage_and_exit();
-        }
+    if cli.generate.unwrap() {
+        generate(&outfile);
     }
 }
 
-fn print_usage_and_exit() {
-    println!("USAGE (when in doubt, use a .png extension on your filenames)");
-    println!("blur INFILE OUTFILE");
-    println!("fractal OUTFILE");
-    // **OPTION**
-    // Print useful information about what subcommands and arguments you can use
-    // println!("...");
-    std::process::exit(-1);
-}
-
-fn blur(infile: String, outfile: String) {
+fn blur(infile: &PathBuf, outfile: &PathBuf, value: f32) {
     // Here's how you open an existing image file
-    let img = image::open(infile).expect("Failed to open INFILE.");
+    let img = image::open(infile).expect(OPEN_FILE_ERR);
     // **OPTION**
     // Parse the blur amount (an f32) from the command-line and pass it through
     // to this function, instead of hard-coding it to 2.0.
-    let img2 = img.blur(2.0);
+    let img2 = img.blur(value);
     // Here's how you save an image to a file.
-    img2.save(outfile).expect("Failed writing OUTFILE.");
+    img2.save(outfile).expect(WRITE_FILE_ERR);
 }
 
-fn brighten(infile: String, outfile: String) {
+fn brighten(infile: &PathBuf, outfile: &PathBuf, value: i32) {
     // See blur() for an example of how to open / save an image.
+    let img = image::open(infile).expect(OPEN_FILE_ERR);
 
     // .brighten() takes one argument, an i32.  Positive numbers brighten the
     // image. Negative numbers darken it.  It returns a new image.
+    let img2 = img.brighten(value);
 
     // Challenge: parse the brightness amount from the command-line and pass it
     // through to this function.
+    img2.save(outfile).expect(WRITE_FILE_ERR);
 }
 
-fn crop(infile: String, outfile: String) {
-    // See blur() for an example of how to open an image.
+fn crop(infile: &PathBuf, outfile: &PathBuf, x: u32, y: u32, width: u32, height: u32) {
+    let mut img = image::open(infile).expect(OPEN_FILE_ERR);
 
     // .crop() takes four arguments: x: u32, y: u32, width: u32, height: u32
     // You may hard-code them, if you like.  It returns a new image.
+    let img2 = img.crop(x, y, width, height);
 
     // Challenge: parse the four values from the command-line and pass them
     // through to this function.
 
-    // See blur() for an example of how to save the image.
+    img2.save(outfile).expect(WRITE_FILE_ERR);
 }
 
-fn rotate(infile: String, outfile: String) {
-    // See blur() for an example of how to open an image.
-
+fn rotate(infile: &PathBuf, outfile: &PathBuf, value: RotateOptions) {
+    let img = image::open(infile).expect(OPEN_FILE_ERR);
     // There are 3 rotate functions to choose from (all clockwise):
     //   .rotate90()
     //   .rotate180()
     //   .rotate270()
     // All three methods return a new image.  Pick one and use it!
-
+    let img2 = match value {
+        RotateOptions::d90 => img.rotate90(),
+        RotateOptions::d180 => img.rotate180(),
+        RotateOptions::d270 => img.rotate270(),
+    };
     // Challenge: parse the rotation amount from the command-line, pass it
     // through to this function to select which method to call.
 
-    // See blur() for an example of how to save the image.
+    img2.save(outfile).expect(WRITE_FILE_ERR);
 }
 
-fn invert(infile: String, outfile: String) {
-    // See blur() for an example of how to open an image.
+fn invert(infile: &PathBuf, outfile: &PathBuf) {
+    let mut img = image::open(infile).expect(OPEN_FILE_ERR);
 
     // .invert() takes no arguments and converts the image in-place, so you
     // will use the same image to save out to a different file.
-
-    // See blur() for an example of how to save the image.
+    img.invert();
+    img.save(outfile).expect(WRITE_FILE_ERR);
 }
 
-fn grayscale(infile: String, outfile: String) {
-    // See blur() for an example of how to open an image.
+fn grayscale(infile: &PathBuf, outfile: &PathBuf) {
+    let img = image::open(infile).expect(OPEN_FILE_ERR);
 
     // .grayscale() takes no arguments. It returns a new image.
-
-    // See blur() for an example of how to save the image.
+    let img2 = img.grayscale();
+    img2.save(outfile).expect(WRITE_FILE_ERR);
 }
 
-fn generate(outfile: String) {
+fn generate(outfile: &PathBuf) {
     // Create an ImageBuffer -- see fractal() for an example
+    let width = 1000;
+    let height = 1000;
 
+    let mut imgbuf = image::ImageBuffer::new(width, height);
     // Iterate over the coordinates and pixels of the image -- see fractal() for an example
+    for (x,y, pixel) in imgbuf.enumerate_pixels_mut() {
+        let red = (0.3 * x as f32) as u8;
+        let blue = (0.3 * y as f32) as u8;
+        let green = (0.3 * (x^y) as f32) as u8;
 
+        // Actually set the pixel. red, green, and blue are u8 values!
+        *pixel = image::Rgb([red, green, blue]);
+    }
     // Set the image to some solid color. -- see fractal() for an example
 
     // Challenge: parse some color data from the command-line, pass it through
@@ -172,10 +255,11 @@ fn generate(outfile: String) {
     // Challenge 2: Generate something more interesting!
 
     // See blur() for an example of how to save the image
+    imgbuf.save(outfile).expect(WRITE_FILE_ERR);
 }
 
 // This code was adapted from https://github.com/PistonDevelopers/image
-fn fractal(outfile: String) {
+fn fractal(outfile: &PathBuf) {
     let width = 800;
     let height = 800;
 
